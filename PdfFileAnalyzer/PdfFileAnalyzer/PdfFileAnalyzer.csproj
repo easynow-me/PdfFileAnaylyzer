@@ -5,6 +5,9 @@
     <Description>PDF File Analyzer C# Class Library</Description>
     <Product>PdfFileAnalyzer Version 2.1.0</Product>
     <Copyright>Copyright © 2012-2019 Uzi Granot. All rights reserved</Copyright>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>EasyNow.PdfFileAnalyzer</PackageId>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
 </Project>

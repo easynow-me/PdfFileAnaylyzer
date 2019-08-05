@@ -86,18 +86,13 @@ public class PdfReader : IDisposable
 	/// <summary>
 	/// Library revision number
 	/// </summary>
-	public static readonly string VersionNumber = "2.1.0";
+	public static readonly string VersionNumber = "1.0.1";
 
 	/// <summary>
 	/// Library revision date
 	/// </summary>
 	public static readonly string VersionDate = "2019/06/19";
-
-	/// <summary>
-	/// File name
-	/// </summary>
-	public string FileName {get; internal set;}
-
+        
 	/// <summary>
 	/// File name
 	/// </summary>
@@ -177,16 +172,87 @@ public class PdfReader : IDisposable
 	////////////////////////////////////////////////////////////////////
 	// Set PDF file position
 	////////////////////////////////////////////////////////////////////
-	internal void SetFilePosition
-			(
-			int	Position
-			)
-		{
-		PdfBinaryReader.BaseStream.Position = StartPosition + Position;
-		return;
-		}
+    internal void SetFilePosition
+    (
+        int Position
+    )
+    {
+        PdfBinaryReader.BaseStream.Position = StartPosition + Position;
+    }
 
-	////////////////////////////////////////////////////////////////////
+    public bool OpenFile(Stream fileStream, string password = null)
+    {
+        // open pdf file for reading
+        PdfBinaryReader = new BinaryReader(fileStream, Encoding.UTF8);
+
+        // create parse file object
+        ParseFile = new PdfFileParser(this);
+
+        // validate file and read cross reference table
+        ValidateFile();
+
+        // search for document ID
+        PdfBase TempIDArray = TrailerDict.FindValue("/ID");
+        if (TempIDArray.IsArray)
+        {
+            // document ID is an array of two ids. Normally the two are the same
+            PdfBase[] IDArray = ((PdfArray) TempIDArray).ArrayItems;
+
+            // take the firat as the id for encryption
+            if (IDArray.Length > 0 && IDArray[0].IsPdfString) DocumentID = ((PdfString) IDArray[0]).StrValue;
+        }
+
+        // search for /Encrypt
+        PdfBase TempEncryptionDict = TrailerDict.FindValue("/Encrypt");
+
+        // document is not encrypted
+        if (TempEncryptionDict.IsEmpty)
+        {
+            // document is not encrypted
+            DecryptionStatus = DecryptionStatus.FileNotProtected;
+
+            // set reader active
+            SetReaderActive();
+            return true;
+        }
+
+        // value is a reference
+        if (TempEncryptionDict.IsReference)
+        {
+            // get indirect object based on reference number
+            PdfIndirectObject ReaderObject = ToPdfIndirectObject((PdfReference) TempEncryptionDict);
+
+            // read object type
+            if (ReaderObject != null)
+            {
+                ReaderObject.ReadObject();
+                if (ReaderObject.ObjectType == ObjectType.Dictionary)
+                {
+                    ReaderObject._PdfObjectType = "/Encryption";
+                    TempEncryptionDict = ReaderObject.Dictionary;
+                }
+            }
+        }
+
+        if (!TempEncryptionDict.IsDictionary) throw new ApplicationException("Encryption dictionary is missing");
+
+        // save encryption dictionary
+        EncryptionDict = (PdfDictionary) TempEncryptionDict;
+
+        // decryption is not possible without document ID
+        if (DocumentID == null) throw new ApplicationException("Encrypted document document ID is missing.");
+
+        // encryption method is not supported by this library
+        if (!TestEncryptionSupport()) return false;
+
+        // try given password or default password
+        if (!TestPassword(password)) return false;
+
+        // document was loaded succesfully
+        return true;
+    }
+
+    ////////////////////////////////////////////////////////////////////
 	// Read PDF file
 	////////////////////////////////////////////////////////////////////
 	/// <summary>
@@ -207,10 +273,7 @@ public class PdfReader : IDisposable
 
 		// make sure file exist
 		if(!File.Exists(FileName)) throw new ArgumentException("PDF file does not exist");
-
-		// save file name
-		this.FileName = FileName;
-
+        
 		// safe file name is a name with no path
 		SafeFileName = FileName.Substring(FileName.LastIndexOf('\\') + 1);
 
